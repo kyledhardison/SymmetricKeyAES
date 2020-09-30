@@ -1,9 +1,12 @@
 
 from sys import byteorder
 import argparse
-import random
+import os
 import string
 import time
+
+from Crypto.Cipher import AES
+
 
 def encrypt(keyFile, plaintextFile, ciphertextFile, output=True):
     """
@@ -87,25 +90,20 @@ def decrypt(keyFile, ciphertextFile, resultFile):
         f.write(resultAscii)
 
 
-def keygen(length, file, output=True):
+def keygen(file, output=True):
     """
-    Generate a random key of a given length, then write to a file
+    Generate a random 256-bit key, then write to a file
 
-    @param length: The length of the key, in bits
     @param file: The output file where the key is written
     """
     # Generate random bits
-    key = random.getrandbits(length)  
-
-    # Convert key to a string representing the bits, using zfill to preserve length and not drop leading zeroes
-    keyBitString = str(format(key, "b").zfill(length)) 
-
+    key = os.urandom(246)  
+    hexKey = key.hex()
     with open(file, "w") as f:
-        f.write(keyBitString)
+        f.write(hexKey)
 
     if(output):
-        print("Key generated: " + keyBitString)
-        print("Key written to " + file)
+        print("Key generated: " + hexKey)
 
 
 def keygentest():
@@ -193,8 +191,6 @@ if __name__ == "__main__":
     dec_parser.add_argument("ciphertext", help="Ciphertext file")
     dec_parser.add_argument("result", help="Result output file")
 
-    key_parser.add_argument("length", help="Bit length of key", type=int, choices=range(1, 129),
-                            metavar="{1-128}")
     key_parser.add_argument("file", help="Output file")
 
     args = parser.parse_args()
@@ -205,7 +201,7 @@ if __name__ == "__main__":
     elif (args.command == "dec"):
         decrypt(args.key, args.ciphertext, args.result)
     elif (args.command == "keygen"):
-        keygen(args.length, args.file)
+        keygen(args.file)
     elif (args.command == "keygentest"):
         keygentest()
     elif (args.command == "enctest"):
