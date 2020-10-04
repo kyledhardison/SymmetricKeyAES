@@ -1,5 +1,4 @@
 
-from sys import byteorder
 import argparse
 import os
 import string
@@ -8,36 +7,32 @@ import time
 from Crypto.Cipher import AES
 
 
-def encrypt(keyFile, plaintextFile, ciphertextFile, output=True):
+def encrypt(encMode, keyFile, plaintextFile, ivFile, ciphertextFile, output=True):
     """
-    Use XOR to encrypt plaintext using a key
+    Use AES to encrypt plaintext using a key
 
+    @param encMode: Either "ECB" or "CBC", determines which mode the ciphertext is encrypted with
     @param keyFile: The file from which to read the encryption key
     @param plaintextFile: The file from wich to read the plaintext
+    @param ivFile: The file to write the generated iv to
     @param ciphertextFile: The file to write the resulting ciphertext to
     """
+    # Read key and plaintext files
     with open(keyFile, "r") as f:
         key = f.read()
+    key = bytes.fromhex(key)
 
     with open(plaintextFile, "r") as f:
         plaintextString = f.read()
     
-    # Convert each ASCII character to a series of 8 bits and join them all together in to a string
-    plaintext = "".join(format(ord(x), "b").zfill(8) for x in plaintextString)
+    iv = os.urandom(16)
+    # Write iv to file
+    with open(ivFile, "r") as f:
+        f.write(iv.hex())
 
-    keyLength = len(key)
-    plaintextLength = len(plaintext)
 
-    # Confirm that key lengths are the same, warn and exit if not
-    if keyLength != plaintextLength:
-        print("ERROR: key length and plain text length are different! Encryption cannot be completed. ")
-        print("Key Length: " + str(keyLength) + " bits")
-        print("Plain text length: " + str(plaintextLength) + " bits")
-        return
-
-    # XOR key and plaintext, then convert result to a bit string, preserving length.
-    result = int(key, 2) ^ int(plaintext, 2)
-    result = str(format(result, "b").zfill(keyLength))
+    # In CBC mode, plaintext must be multiples of 16. TODO: ECB mode too?
+    
 
     with open(ciphertextFile, "w") as f:
         f.write(result)
@@ -96,8 +91,7 @@ def keygen(file, output=True):
 
     @param file: The output file where the key is written
     """
-    # Generate random bits
-    key = os.urandom(246)  
+    key = os.urandom(32)  
     hexKey = key.hex()
     with open(file, "w") as f:
         f.write(hexKey)
@@ -197,7 +191,7 @@ if __name__ == "__main__":
 
     # Run the chosen function based on passed arguments
     if (args.command == "enc"):
-        encrypt(args.key, args.plaintext, args.ciphertext)
+        encrypt()
     elif (args.command == "dec"):
         decrypt(args.key, args.ciphertext, args.result)
     elif (args.command == "keygen"):
