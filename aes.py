@@ -6,6 +6,27 @@ import time
 
 from Crypto.Cipher import AES
 
+def pad(data):
+    """
+    Pad the provided data to be a multiple of the AES block size, then return the padded data
+
+    @param data
+    @return padded: The padded data
+    """
+    padded = data + (AES.block_size - len(data) % AES.block_size) * chr(AES.block_size - len(data) % AES.block_size)
+    return padded
+
+
+def unpad(data):
+    """
+    Remove the padding from the provided data, then return the unpadded data
+
+    @param data
+    @return unpadded: The unpadded data
+    """
+    unpadded = data[:-ord(data[len(data)-1:])]
+    return unpadded
+
 
 def encrypt(encMode, keyFile, plaintextFile, ivFile, ciphertextFile, output=True):
     """
@@ -25,64 +46,58 @@ def encrypt(encMode, keyFile, plaintextFile, ivFile, ciphertextFile, output=True
     with open(plaintextFile, "r") as f:
         plaintextString = f.read()
     
-    iv = os.urandom(16)
-    # Write iv to file
-    with open(ivFile, "r") as f:
-        f.write(iv.hex())
+    plaintextPadded = pad(plaintextString)
 
+    if encMode == "CBC":
+        iv = os.urandom(16)
+        # Write iv to file
+        with open(ivFile, "w") as f:
+            f.write(iv.hex())
 
-    # In CBC mode, plaintext must be multiples of 16. TODO: ECB mode too?
-    
+        cipher = AES.new(key, AES.MODE_CBC, iv)
+    elif encMode == "ECB":
+        cipher = AES.new(key, AES.MODE_ECB)
+    else:
+        print("Error: Invalid encryption mode.")
+        return
+
+    result = cipher.encrypt(plaintextPadded).hex()
 
     with open(ciphertextFile, "w") as f:
         f.write(result)
 
-    if(output):
-        print("Plaintext:  " + str(plaintext))
-        print("Key:        " + str(key))
+    if output:
         print("Ciphertext: " + str(result))
-        print("Output written to " + ciphertextFile)
 
 
-def decrypt(keyFile, ciphertextFile, resultFile):
+def decrypt(keyFile, ivFile, ciphertextFile, resultFile, output=True):
     """
-    Use XOR to decrypt ciphertext using a key
+    Use AES to decrypt ciphertext using a key and iv
 
     @param keyFile: The file from which to read the encryption key
+    @param ivFIle: The file containing the initialization vector
     @param ciphertextFile: The file from wich to read the ciphertext
     @param resultFile: The file to write the resulting plaintext to
     """
     with open(keyFile, "r") as f:
-        key = f.read()
+        key = bytes.fromhex(f.read())
 
     with open(ciphertextFile, "r") as f:
-        ciphertextString = f.read()
+        ciphertext = bytes.fromhex(f.read())
 
-    keyLength = len(key)
-    ciphertextLength = len(ciphertextString)
+    with open(ivFile, "r") as f:
+        iv = bytes.fromhex(f.read())
 
-    # Confirm that key lengths are the same, warn and exit if not
-    if keyLength != ciphertextLength:
-        print("ERROR: key length and cipher text length are different! Decryption cannot be completed. ")
-        print("Key Length: " + str(keyLength) + " bits")
-        print("Cipher text length: " + str(ciphertextLength) + " bits")
-        return
+    
+    cipher = AES.new(key, AES.MODE_CBC, iv)
 
-    # XOR key and ciphertext, then convert result to a bit string, preserving length.
-    result = int(key, 2) ^ int(ciphertextString, 2)
-    result = str(format(result, "b").zfill(keyLength))
+    result = unpad(cipher.decrypt(ciphertext)).decode()
 
-    # Step through the result binary string 8 bits at a time, parsing each to an ascii character.
-    resultAscii = ''.join(chr(int(result[i*8:i*8+8],2)) for i in range(len(result)//8))
-
-    print("Key:        " + str(key))
-    print("Ciphertext: " + str(ciphertextString))
-    print("Plaintext:  " + str(result))
-    print("Plaintext in ASCII: " + str(resultAscii))
-    print("Output written to " + ciphertextFile)
+    if output:
+        print("Decrypted plaintext: " + str(result))
 
     with open(resultFile, "w") as f:
-        f.write(resultAscii)
+        f.write(result)
 
 
 def keygen(file, output=True):
@@ -100,67 +115,33 @@ def keygen(file, output=True):
         print("Key generated: " + hexKey)
 
 
-def keygentest():
-    """
-    Generate 20000 3-bit keys, and calculate the frequency distrobution.
-    """
-    length = 3
-    keys = []
-    for _ in range (0, 20000):
-        key = str(format(random.getrandbits(length), "b").zfill(length))
-        keys.append(key)
-
-    print("20000 3-bit keys generated.")
-    avg = 20000/8
-    print("Theoretical Average count for each value: " + str(int(avg)))
-
-    keyData = [
-        keys.count("000"),
-        keys.count("001"),
-        keys.count("010"),
-        keys.count("011"),
-        keys.count("100"),
-        keys.count("101"),
-        keys.count("110"),
-        keys.count("111")
-    ]
-
-    keyAvg = [ round(abs(avg-x)/((avg+x)/2)*100, 3) for x in keyData ]
-
-    print("Key Generation Counts:")
-    print("000: " + str(keyData[0]) + "  |  Avg. Deviation: " + str(abs(avg-keyData[0])) + "  |  Percent Deviation: " + str(keyAvg[0]) + "%")
-    print("001: " + str(keyData[1]) + "  |  Avg. Deviation: " + str(abs(avg-keyData[1])) + "  |  Percent Deviation: " + str(keyAvg[1]) + "%")
-    print("010: " + str(keyData[2]) + "  |  Avg. Deviation: " + str(abs(avg-keyData[2])) + "  |  Percent Deviation: " + str(keyAvg[2]) + "%")
-    print("011: " + str(keyData[3]) + "  |  Avg. Deviation: " + str(abs(avg-keyData[3])) + "  |  Percent Deviation: " + str(keyAvg[3]) + "%")
-    print("100: " + str(keyData[4]) + "  |  Avg. Deviation: " + str(abs(avg-keyData[4])) + "  |  Percent Deviation: " + str(keyAvg[4]) + "%")
-    print("101: " + str(keyData[5]) + "  |  Avg. Deviation: " + str(abs(avg-keyData[5])) + "  |  Percent Deviation: " + str(keyAvg[5]) + "%")
-    print("110: " + str(keyData[6]) + "  |  Avg. Deviation: " + str(abs(avg-keyData[6])) + "  |  Percent Deviation: " + str(keyAvg[6]) + "%")
-    print("111: " + str(keyData[7]) + "  |  Avg. Deviation: " + str(abs(avg-keyData[7])) + "  |  Percent Deviation: " + str(keyAvg[7]) + "%")
+def ECB_CBC_test():
+    for i in range(1,6):
+        print("ECB encryption run #" + str(i) + ":")
+        encrypt("ECB", "./data/key.txt", "./data/plaintext.txt", "./data/iv.txt", "./data/ciphertext.txt")
+        print("CBC encryption run #" + str(i) + ":")
+        encrypt("CBC", "./data/key.txt", "./data/plaintext.txt", "./data/iv.txt", "./data/ciphertext.txt")
+        print()
 
 
-def enctest():
-    """
-    Create 5000 random 128-bit keys and plaintext examples, then measure the average time
-    that it takes to encrypt each example.
-    """
-    times = []
-
-    for _ in range(0, 5000):
-        # Generate a random key and plaintext for testing purposes
-        keygen(128, "./data/testkey.txt", output=False)
-
-        with open("./data/testplaintext.txt", "w") as f:
-            f.write(''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase, k=16)))
-
-        # With the generated test values, run the encryption function and time how long it takes to complete
+def CBC_time():
+    encTimes = []
+    decTimes = []
+    for i in range(999):
         start = time.time()
-        encrypt("./data/testkey.txt", "./data/testplaintext.txt", "./data/testciphertext.txt", output=False)
+        encrypt("CBC", "./data/key.txt", "./data/plaintext.txt", "./data/iv.txt", "./data/ciphertext.txt", output=False)
         end = time.time()
-        times.append(end-start)
+        encTimes.append(end-start)
 
-    # Calculate and print the average running time, in milliseconds
-    print("5000 128-bit encryptions run.")
-    print("Average running time: " + str(round((sum(times) / len(times)) * 1000, 4)) + " milliseconds")
+        start = time.time()
+        decrypt("./data/key.txt", "./data/iv.txt", "./data/ciphertext.txt","./data/result.txt", output=False)
+        end = time.time()
+        decTimes.append(end-start)
+    
+    print("1000 AES 256 CBC encryptions and decryptions run.")
+    print("Average encryption time: " + str(round((sum(encTimes) / len(encTimes)) * 1000, 4)) + " milliseconds")
+    print("Average decryption time: " + str(round((sum(decTimes) / len(decTimes)) * 1000, 4)) + " milliseconds")
+
 
 
 # Main function
@@ -173,15 +154,17 @@ if __name__ == "__main__":
     enc_parser = subparsers.add_parser("enc")
     dec_parser = subparsers.add_parser("dec")
     key_parser = subparsers.add_parser("keygen")
-    keygentest_parser = subparsers.add_parser("keygentest")
-    enctest_parser = subparsers.add_parser("enctest")
+    keygentest_parser = subparsers.add_parser("ecbcbctest")
+    enctest_parser = subparsers.add_parser("cbctime")
 
-
+    enc_parser.add_argument("mode", help="Encryption mode (CBC or ECB)")
     enc_parser.add_argument("key", help="Key file")
     enc_parser.add_argument("plaintext", help="Plaintext file")
+    enc_parser.add_argument("iv", help="IV output file")
     enc_parser.add_argument("ciphertext", help="Ciphertext output file")
 
     dec_parser.add_argument("key", help="Key file")
+    dec_parser.add_argument("iv", help="IV file")
     dec_parser.add_argument("ciphertext", help="Ciphertext file")
     dec_parser.add_argument("result", help="Result output file")
 
@@ -191,12 +174,12 @@ if __name__ == "__main__":
 
     # Run the chosen function based on passed arguments
     if (args.command == "enc"):
-        encrypt()
+        encrypt(args.mode, args.key, args.plaintext, args.iv, args.ciphertext)
     elif (args.command == "dec"):
-        decrypt(args.key, args.ciphertext, args.result)
+        decrypt(args.key, args.iv, args.ciphertext, args.result)
     elif (args.command == "keygen"):
         keygen(args.file)
-    elif (args.command == "keygentest"):
-        keygentest()
-    elif (args.command == "enctest"):
-        enctest()
+    elif (args.command == "ecbcbctest"):
+        ECB_CBC_test()
+    elif (args.command == "cbctime"):
+        CBC_time()
